@@ -1,4 +1,5 @@
-photon
+/photon
+!photon/
 photon.exe
 output.txt
 test.txt
