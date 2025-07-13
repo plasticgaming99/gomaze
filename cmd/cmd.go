@@ -4,30 +4,20 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	rd "github.com/plasticgaming99/gomaze/_lib/randoms"
 	"github.com/plasticgaming99/gomaze/composite"
+	"github.com/plasticgaming99/gomaze/gridsys"
 	"github.com/plasticgaming99/gomaze/maze"
 )
 
 var (
 	MazeMap []maze.Maze
-	Editor  composite.EditGoph
+	gridEd  = gridsys.New()
 	comp    composite.Compositor
 )
 
-func repeatingKeyPressed(key ebiten.Key) bool {
-	var (
-		delay    = ebiten.TPS() / 2
-		interval = ebiten.TPS() / 18
-	)
-	d := inpututil.KeyPressDuration(key)
-	if d == 1 {
-		return true
-	}
-	if d >= delay && (d-delay)%interval == 0 {
-		return true
-	}
-	return false
+func init() {
+	gridEd.SizeMult = 10
 }
 
 type Gaem struct {
@@ -76,36 +66,34 @@ func init() {
 	})
 }
 
-// init compositor
-func init() {
-	Editor = composite.NewEditor()
-}
-
 func (g *Gaem) Update() error {
-	if repeatingKeyPressed(ebiten.KeyUp) {
+	if rd.RepeatingKeyPressed(ebiten.KeyUp) {
 		MazeMap[mzmap].Gopher[0].Up(&MazeMap[mzmap])
-	} else if repeatingKeyPressed(ebiten.KeyDown) {
+	} else if rd.RepeatingKeyPressed(ebiten.KeyDown) {
 		MazeMap[mzmap].Gopher[0].Down(&MazeMap[mzmap])
-	} else if repeatingKeyPressed(ebiten.KeyLeft) {
+	} else if rd.RepeatingKeyPressed(ebiten.KeyLeft) {
 		MazeMap[mzmap].Gopher[0].Left(&MazeMap[mzmap])
-	} else if repeatingKeyPressed(ebiten.KeyRight) {
+	} else if rd.RepeatingKeyPressed(ebiten.KeyRight) {
 		MazeMap[mzmap].Gopher[0].Right(&MazeMap[mzmap])
 	} else
 	// separator
-	if repeatingKeyPressed(ebiten.KeyE) {
+	if rd.RepeatingKeyPressed(ebiten.KeyE) {
 		MazeMap[mzmap].Gopher[0].Rotate(1)
-	} else if repeatingKeyPressed(ebiten.KeyW) {
+	} else if rd.RepeatingKeyPressed(ebiten.KeyW) {
 		MazeMap[mzmap].Gopher[0].Walk(&MazeMap[mzmap], 1)
-	} else if repeatingKeyPressed(ebiten.KeyQ) {
+	} else if rd.RepeatingKeyPressed(ebiten.KeyQ) {
 		MazeMap[mzmap].Gopher[0].Rotate(-1)
 	}
+	gridEd.Tick()
 	return nil
 }
 
+// draw function
 func (g *Gaem) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{255, 0, 0, 0})
 	maze.DrawMaze(screen, &MazeMap[mzmap])
-	comp.Draw(screen, Editor)
+	gridEd.Draw(screen)
+	// comp.Draw(screen, Editor)
 }
 
 func (g *Gaem) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -114,8 +102,8 @@ func (g *Gaem) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func Exec() {
-	ebiten.SetWindowResizable(true)
-	//maze := gomaze.Maze{}
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	// maze := gomaze.Maze{}
 	mzmap = 1
 	gaem := Gaem{}
 	ebiten.RunGame(&gaem)

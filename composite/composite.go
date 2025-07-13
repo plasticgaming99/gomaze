@@ -2,21 +2,19 @@ package composite
 
 import (
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/plasticgaming99/gomaze/gabagui"
-	"github.com/plasticgaming99/gomaze/photon"
+	"github.com/plasticgaming99/gomaze/gridsys"
 )
 
 type EditGoph struct {
 	EbitenScr *ebiten.Image
 	graphical bool
-	Photon    FlexPhoton
-	GabaGUI   gabagui.GabaGUI
+	Gridsys   gridsys.Gridsys
 }
 
 func NewEditor() EditGoph {
 	return EditGoph{
-		EbitenScr: ebiten.NewImage(1920, 1080),
-		graphical: false,
+		EbitenScr: ebiten.NewImage(ebiten.Monitor().Size()),
+		graphical: true,
 	}
 }
 
@@ -31,42 +29,31 @@ func (gph *EditGoph) SetTextmode() {
 func (gph *EditGoph) Drawer() {
 	switch gph.graphical {
 	case true:
-		gph.GabaGUI.Draw(gph.EbitenScr)
+		gph.Gridsys.Draw(gph.EbitenScr)
 	case false:
-		gph.Photon.PhotonDrawer(gph.EbitenScr)
+		//gph.Photon.PhotonDrawer(gph.EbitenScr)
 	}
 }
 
 func (gph *EditGoph) Ticker() {
 	switch gph.graphical {
 	case true:
-		gph.GabaGUI.Tick()
+		gph.Gridsys.Tick()
 	case false:
-		gph.Photon.PhotonTicker()
+		//gph.Photon.PhotonTicker()
 	}
 }
 
-type FlexPhoton struct {
-	PhotonStruct *photon.Editor
-	ScreenX      int
-	ScreenY      int
-}
-
 type Compositor struct {
-	ebitenScreen *ebiten.Image
-	EditScreen   *ebiten.Image
-	MazeScreen   *ebiten.Image
-	WindowX      int
-	WindowY      int
+	EditorImg *ebiten.Image
+	MazeImg   *ebiten.Image
 }
 
-func (ph *FlexPhoton) PhotonDrawer(scr *ebiten.Image) {
-	ph.PhotonStruct.Draw(scr)
-}
-
-func (ph *FlexPhoton) PhotonTicker() {
-	ph.PhotonStruct.Layout(ph.ScreenX, ph.ScreenY)
-	ph.PhotonStruct.Update()
+func NewCompositor() Compositor {
+	return Compositor{
+		EditorImg: ebiten.NewImage(1920, 1080),
+		MazeImg:   ebiten.NewImage(1920, 1080),
+	}
 }
 
 func (cp *Compositor) Draw(img *ebiten.Image, edit EditGoph) {
