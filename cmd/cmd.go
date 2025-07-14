@@ -13,7 +13,8 @@ import (
 var (
 	MazeMap []maze.Maze
 	gridEd  = gridsys.New()
-	comp    composite.Compositor
+	comp    = composite.NewCompositor()
+	edgp    = composite.NewEditor()
 )
 
 func init() {
@@ -84,16 +85,26 @@ func (g *Gaem) Update() error {
 	} else if rd.RepeatingKeyPressed(ebiten.KeyQ) {
 		MazeMap[mzmap].Gopher[0].Rotate(-1)
 	}
-	gridEd.Tick()
+	//gridEd.Tick()
+	edgp.Gridsys.Tick()
 	return nil
 }
 
 // draw function
 func (g *Gaem) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{255, 0, 0, 0})
-	maze.DrawMaze(screen, &MazeMap[mzmap])
-	gridEd.Draw(screen)
-	// comp.Draw(screen, Editor)
+	/*maze.DrawMaze(screen, &MazeMap[mzmap])
+	v2 := gridsys.Vec2{
+		X: 0,
+		Y: 0,
+	}
+	x, y := ebiten.WindowSize()
+	siz := gridsys.Vec2{
+		X: x,
+		Y: y,
+		}*/
+	comp.Draw(screen, edgp, &MazeMap[mzmap])
+	//gridEd.Draw(screen, v2, siz)
 }
 
 func (g *Gaem) Layout(outsideWidth, outsideHeight int) (int, int) {

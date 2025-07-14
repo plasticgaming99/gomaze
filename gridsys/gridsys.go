@@ -3,12 +3,13 @@ package gridsys
 
 import (
 	"bytes"
-	"fmt"
+	"image/color"
 	"log"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 	rd "github.com/plasticgaming99/gomaze/_lib/randoms"
 	gridassets "github.com/plasticgaming99/gomaze/gridsys/assets"
 )
@@ -104,38 +105,47 @@ func (gsys *Gridsys) Tick() {
 	}
 
 	//tpsC := float64(ebiten.TPS()) / 100
-	if ebiten.IsKeyPressed(ebiten.KeyNumpad4) {
+	if ebiten.IsKeyPressed(ebiten.KeyJ) {
 		gsys.tX = gsys.tX + 0.05
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyNumpad6) {
+	if ebiten.IsKeyPressed(ebiten.KeyL) {
 		gsys.tX = gsys.tX - 0.05
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyNumpad8) {
+	if ebiten.IsKeyPressed(ebiten.KeyI) {
 		gsys.tY = gsys.tY + 0.05
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyNumpad2) {
+	if ebiten.IsKeyPressed(ebiten.KeyK) {
 		gsys.tY = gsys.tY - 0.05
 	}
 }
 
-func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image) {
+// just for settings
+type Vec2 struct {
+	X int
+	Y int
+}
+
+func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
 	// GRID
-	wx, wy := ebiten.WindowSize()
+	wx, wy := size.X, size.Y
 	baseX, baseY := math.Mod(gsys.tX, 1), math.Mod(gsys.tY, 1)
 	var relTileX, relTileY int
 	if 0 <= baseX {
 		relTileX = int(math.Floor(gsys.tX))
 	} else {
-		relTileX = int(math.Floor(-gsys.tX))
+		relTileX = int(math.Floor(gsys.tX))
 	}
 	if 0 <= baseY {
 		relTileY = int(math.Floor(gsys.tY))
 	} else {
-		relTileY = int(math.Floor(-gsys.tY))
+		relTileY = int(math.Floor(gsys.tY))
 	}
+	dc := false
 	op := &ebiten.DrawImageOptions{}
-	for y := -1; y < wy/100+2; y++ {
-		for x := -1; x < wx/100+2; x++ {
+	var mx, my float64
+	rs := 10 * int(gsys.SizeMult)
+	for y := -2; y < wy/rs*2; y++ {
+		for x := -2; x < wx/rs+2; x++ {
 			op.GeoM.Scale(float64(gsys.SizeMult), float64(gsys.SizeMult))
 			op.GeoM.Translate(
 				(float64(x*10)*gsys.SizeMult)+baseX*gsys.SizeMult*10,
@@ -145,22 +155,45 @@ func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image) {
 			op.GeoM.Reset()
 			// draw if pointer is available
 			if x == PointerX+relTileX && y == PointerY+relTileY {
-				fmt.Println(
-					(float64(x*10)*gsys.SizeMult)+baseX*gsys.SizeMult*10,
-					(float64(y*10)*gsys.SizeMult)+baseY*gsys.SizeMult*10,
-					PointerX,
-					PointerY,
-				)
-				op.GeoM.Scale(float64(gsys.SizeMult), float64(gsys.SizeMult))
-				op.GeoM.Translate(
-					(float64(x*10)*gsys.SizeMult)+baseX*(gsys.SizeMult*10),
-					(float64(y*10)*gsys.SizeMult)+baseY*(gsys.SizeMult*10),
-				)
-				ebitenScr.DrawImage(Pointer, op)
+				var adjx, adjy int
+				if 0 > relTileX {
+					adjx += rs
+				}
+				if 0 > relTileY {
+					adjy += rs
+				}
+				op := &ebiten.DrawImageOptions{}
+				//op.GeoM.Scale(float64(gsys.SizeMult), float64(gsys.SizeMult))
+				mx = (float64(x*10) * gsys.SizeMult) + (baseX * (gsys.SizeMult * 10)) + float64(adjx)
+				my = (float64(y*10) * gsys.SizeMult) + (baseY * (gsys.SizeMult * 10)) + float64(adjy)
+				//fmt.Println(math.Floor(mx), math.Floor(my))
+				//op.GeoM.Translate(mx, my)
+				//ebitenScr.DrawImage(Pointer, op)
+				op.GeoM.Reset()
+				dc = true
 			}
 			//fmt.Println("x", x, "relTileX", relTileX, "PointerX", PointerX, "=>", x-relTileX)
-
-			op.GeoM.Reset()
 		}
 	}
+	if dc {
+		var adjx, adjy int
+		if 0 > relTileX {
+			adjx += 10 * int(gsys.SizeMult)
+		}
+		if 0 > relTileY {
+			adjy += 10 * int(gsys.SizeMult)
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(gsys.SizeMult), float64(gsys.SizeMult))
+		//mx := (float64(baseX*10) * gsys.SizeMult) + (baseX * (gsys.SizeMult * 10)) + float64(adjx)
+		//my := (float64(baseY*10) * gsys.SizeMult) + (baseY * (gsys.SizeMult * 10)) + float64(adjy)
+		op.GeoM.Translate(mx, my)
+		ebitenScr.DrawImage(Pointer, op)
+		op.GeoM.Reset()
+	}
+
+	// palette
+	separate := 7
+	edratio := 4
+	vector.DrawFilledRect(ebitenScr, float32(wx/separate*edratio), 0, float32(wx/separate*separate-edratio), float32(wy), color.RGBA{150, 150, 150, 255}, false)
 }
