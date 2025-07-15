@@ -3,6 +3,7 @@ package gridsys
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"log"
 	"math"
@@ -23,10 +24,10 @@ var (
 
 // let us set up internal image
 var (
-	StartBlock *ebiten.Image
-	BlockBlue  *ebiten.Image
-	NormalGrid *ebiten.Image
-	Pointer    *ebiten.Image
+	StartBlockImg *ebiten.Image
+	BlockBlueImg  *ebiten.Image
+	NormalGridImg *ebiten.Image
+	PointerImg    *ebiten.Image
 )
 
 // let us initialize
@@ -38,28 +39,50 @@ func init() {
 		}
 	}
 	sB := bytes.NewReader(gridassets.StartBlock)
-	StartBlock, _, err = ebitenutil.NewImageFromReader(sB)
+	StartBlockImg, _, err = ebitenutil.NewImageFromReader(sB)
 	handleErr(err)
 	bB := bytes.NewReader(gridassets.BlockBlue)
-	BlockBlue, _, err = ebitenutil.NewImageFromReader(bB)
+	BlockBlueImg, _, err = ebitenutil.NewImageFromReader(bB)
 	handleErr(err)
 	nG := bytes.NewReader(gridassets.NormalGrid)
-	NormalGrid, _, err = ebitenutil.NewImageFromReader(nG)
+	NormalGridImg, _, err = ebitenutil.NewImageFromReader(nG)
 	handleErr(err)
 	pT := bytes.NewReader(gridassets.Pointer)
-	Pointer, _, err = ebitenutil.NewImageFromReader(pT)
+	PointerImg, _, err = ebitenutil.NewImageFromReader(pT)
 	handleErr(err)
 }
 
+type BlockKind int
+
+const (
+	StartBlock = BlockKind(iota)
+	IfBlock
+	WalkBlock
+	TurnRightBlock
+	TurnLeftBlock
+	FlipBlock
+)
+
+type BooleanKind int
+
+const (
+	FrontIsWall = BooleanKind(iota)
+	BackIsWall
+	LeftIsWall
+)
+
 type CodeBlock struct {
+	Kind BlockKind
+
 	X int // It's a grid!!
 	Y int // Grid too!
 
-	mouseMovementX int // Relative maybe
-	mouseMovementY int
-
 	upper int64
 	lower int64
+
+	// only for if block
+	mid     int64
+	boolean BooleanKind
 }
 
 type Gridsys struct {
@@ -67,8 +90,8 @@ type Gridsys struct {
 	tX       float64 // translate X
 	tY       float64 // translate Y
 
-	HeadBlock []int64
-	Blocks    map[int64]CodeBlock
+	HeadBlocks []int64
+	Blocks     map[int64]CodeBlock
 }
 
 // init new gridsys with default val
@@ -119,10 +142,36 @@ func (gsys *Gridsys) Tick() {
 	}
 }
 
+// reset all and add one head block
+func (gsys *Gridsys) InitializeSpace() {
+	gsys.HeadBlocks = append(gsys.HeadBlocks, 1)
+	gsys.Blocks[1] = CodeBlock{
+		Kind: StartBlock,
+	}
+}
+
 // just for settings
 type Vec2 struct {
 	X int
 	Y int
+}
+
+func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, pos Vec2) {
+	switch codeblock.Kind {
+	case StartBlock:
+
+	case IfBlock:
+	case WalkBlock:
+	case TurnRightBlock:
+	case TurnLeftBlock:
+	case FlipBlock:
+	}
+}
+
+func (gsys *Gridsys) DrawAllBlocks(ebitenScr *ebiten.Image, pos Vec2) {
+	for _, id := range gsys.HeadBlocks {
+		fmt.Println(id)
+	}
 }
 
 func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
@@ -151,7 +200,7 @@ func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
 				(float64(x*10)*gsys.SizeMult)+baseX*gsys.SizeMult*10,
 				(float64(y*10)*gsys.SizeMult)+baseY*gsys.SizeMult*10,
 			)
-			ebitenScr.DrawImage(NormalGrid, op)
+			ebitenScr.DrawImage(NormalGridImg, op)
 			op.GeoM.Reset()
 			// draw if pointer is available
 			if x == PointerX+relTileX && y == PointerY+relTileY {
@@ -188,7 +237,7 @@ func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
 		//mx := (float64(baseX*10) * gsys.SizeMult) + (baseX * (gsys.SizeMult * 10)) + float64(adjx)
 		//my := (float64(baseY*10) * gsys.SizeMult) + (baseY * (gsys.SizeMult * 10)) + float64(adjy)
 		op.GeoM.Translate(mx, my)
-		ebitenScr.DrawImage(Pointer, op)
+		ebitenScr.DrawImage(PointerImg, op)
 		op.GeoM.Reset()
 	}
 
