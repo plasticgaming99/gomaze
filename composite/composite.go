@@ -1,6 +1,7 @@
 package composite
 
 import (
+	"fmt"
 	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -84,12 +85,47 @@ func NewCompositor() Compositor {
 }
 
 func (cp *Compositor) Draw(img *ebiten.Image, edit EditGoph, mz *maze.Maze) {
-	wx, _ := ebiten.WindowSize()
+	wx, wy := ebiten.WindowSize()
 	edit.Drawer()
 	maze.DrawMaze(cp.MazeImg, mz)
 	img.DrawImage(edit.EbitenScr, nil)
+
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64((wx/separate)*(edratio)), 0)
+
+	// maze space size
+	mx := float64(wx / separate * (separate - edratio))
+	my := float64(wy)
+
+	// tile ratio
+	mtx := mx / float64(maze.MazeTileSize*mz.SizeX)
+	mty := my / float64(maze.MazeTileSize*mz.SizeY)
+
+	var (
+		rescalebase float64
+		zt          bool
+	)
+	if mtx < mty {
+		rescalebase = mtx
+		zt = true
+	} else {
+		rescalebase = mty
+		zt = false
+	}
+
+	// just maze size
+	msx := float64(maze.MazeTileSize*mz.SizeX) * rescalebase
+	msy := float64(maze.MazeTileSize*mz.SizeY) * rescalebase
+
+	//fmt.Println(mx, my, mtx, mty, rescalebase)
+
+	op.GeoM.Scale(float64(rescalebase), float64(rescalebase))
+	basex := float64((wx / separate) * (edratio))
+	if zt {
+		op.GeoM.Translate(basex, (my-msy)/2)
+	} else {
+		fmt.Println(my, mx/mtx)
+		op.GeoM.Translate((mx-msx)/2+basex, 0)
+	}
 	img.DrawImage(cp.MazeImg, op)
 	op.GeoM.Reset()
 }

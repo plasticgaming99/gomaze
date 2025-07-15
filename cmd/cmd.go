@@ -68,7 +68,7 @@ func init() {
 }
 
 func (g *Gaem) Update() error {
-	if rd.RepeatingKeyPressed(ebiten.KeyUp) {
+	/*if rd.RepeatingKeyPressed(ebiten.KeyUp) {
 		MazeMap[mzmap].Gopher[0].Up(&MazeMap[mzmap])
 	} else if rd.RepeatingKeyPressed(ebiten.KeyDown) {
 		MazeMap[mzmap].Gopher[0].Down(&MazeMap[mzmap])
@@ -76,7 +76,7 @@ func (g *Gaem) Update() error {
 		MazeMap[mzmap].Gopher[0].Left(&MazeMap[mzmap])
 	} else if rd.RepeatingKeyPressed(ebiten.KeyRight) {
 		MazeMap[mzmap].Gopher[0].Right(&MazeMap[mzmap])
-	} else
+	} else*/
 	// separator
 	if rd.RepeatingKeyPressed(ebiten.KeyE) {
 		MazeMap[mzmap].Gopher[0].Rotate(1)
@@ -92,17 +92,7 @@ func (g *Gaem) Update() error {
 
 // draw function
 func (g *Gaem) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{255, 0, 0, 0})
-	/*maze.DrawMaze(screen, &MazeMap[mzmap])
-	v2 := gridsys.Vec2{
-		X: 0,
-		Y: 0,
-	}
-	x, y := ebiten.WindowSize()
-	siz := gridsys.Vec2{
-		X: x,
-		Y: y,
-		}*/
+	screen.Fill(color.RGBA{50, 50, 50, 50})
 	comp.Draw(screen, edgp, &MazeMap[mzmap])
 	//gridEd.Draw(screen, v2, siz)
 }
