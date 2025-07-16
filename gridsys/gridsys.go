@@ -57,6 +57,8 @@ type BlockKind int
 const (
 	StartBlock = BlockKind(iota)
 	IfBlock
+	ForInfBlock
+	ForRangeBlock
 	WalkBlock
 	TurnRightBlock
 	TurnLeftBlock
@@ -154,6 +156,18 @@ func (gsys *Gridsys) InitializeSpace() {
 type Vec2 struct {
 	X int
 	Y int
+}
+
+func (gsys *Gridsys) IsTouched(codeblock *CodeBlock) {
+	switch codeblock.Kind {
+	case StartBlock:
+
+	case IfBlock:
+	case WalkBlock:
+	case TurnRightBlock:
+	case TurnLeftBlock:
+	case FlipBlock:
+	}
 }
 
 func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, pos Vec2) {
