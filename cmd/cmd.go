@@ -19,6 +19,7 @@ var (
 
 func init() {
 	gridEd.SizeMult = 10
+	edgp.Gridsys.InitializeSpace()
 }
 
 type Gaem struct {

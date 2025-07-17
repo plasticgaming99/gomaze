@@ -10,9 +10,12 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	rd "github.com/plasticgaming99/gomaze/_lib/randoms"
+	"github.com/plasticgaming99/gomaze/assets/fonts"
 	gridassets "github.com/plasticgaming99/gomaze/gridsys/assets"
+	"github.com/plasticgaming99/gomaze/gridsys/gridlocale"
 )
 
 // i'm implementing
@@ -24,13 +27,25 @@ var (
 
 // let us set up internal image
 var (
-	StartBlockImg *ebiten.Image
-	BlockBlueImg  *ebiten.Image
-	NormalGridImg *ebiten.Image
-	PointerImg    *ebiten.Image
+	StartBlockImg                 *ebiten.Image
+	StartBlockCapImg              *ebiten.Image
+	BracketBlockImg               *ebiten.Image
+	BracketBlockEndImg            *ebiten.Image
+	ForBlockHorizontalImg         *ebiten.Image
+	IfBlockHorizontalFirstImg     *ebiten.Image
+	IfBlockHorizontalEmptyImg     *ebiten.Image
+	IfBlockHorizontalExtentionImg *ebiten.Image
+	BlockBlueImg                  *ebiten.Image
+	NormalGridImg                 *ebiten.Image
+	PointerImg                    *ebiten.Image
 )
 
-// let us initialize
+// fonts
+var (
+	misakiGothic2ndSrc *text.GoTextFaceSource
+)
+
+// mainly init image assets
 func init() {
 	var err error
 	handleErr := func(err error) {
@@ -41,15 +56,55 @@ func init() {
 	sB := bytes.NewReader(gridassets.StartBlock)
 	StartBlockImg, _, err = ebitenutil.NewImageFromReader(sB)
 	handleErr(err)
+
+	sBC := bytes.NewReader(gridassets.StartBlockCap)
+	StartBlockCapImg, _, err = ebitenutil.NewImageFromReader(sBC)
+	handleErr(err)
+
+	brB := bytes.NewReader(gridassets.BracketBlock)
+	BracketBlockImg, _, err = ebitenutil.NewImageFromReader(brB)
+	handleErr(err)
+
+	brBE := bytes.NewReader(gridassets.BracketEnd)
+	BracketBlockEndImg, _, err = ebitenutil.NewImageFromReader(brBE)
+	handleErr(err)
+
+	fBH := bytes.NewReader(gridassets.ForBlockHorz)
+	ForBlockHorizontalImg, _, err = ebitenutil.NewImageFromReader(fBH)
+	handleErr(err)
+
+	iBHF := bytes.NewReader(gridassets.IfBlockHorzFirst)
+	IfBlockHorizontalFirstImg, _, err = ebitenutil.NewImageFromReader(iBHF)
+	handleErr(err)
+
+	iBHEm := bytes.NewReader(gridassets.IfBlockHorzEmp)
+	IfBlockHorizontalEmptyImg, _, err = ebitenutil.NewImageFromReader(iBHEm)
+	handleErr(err)
+
+	iBHEx := bytes.NewReader(gridassets.IfBlockHorzExt)
+	IfBlockHorizontalExtentionImg, _, err = ebitenutil.NewImageFromReader(iBHEx)
+	handleErr(err)
+
 	bB := bytes.NewReader(gridassets.BlockBlue)
 	BlockBlueImg, _, err = ebitenutil.NewImageFromReader(bB)
 	handleErr(err)
+
 	nG := bytes.NewReader(gridassets.NormalGrid)
 	NormalGridImg, _, err = ebitenutil.NewImageFromReader(nG)
 	handleErr(err)
+
 	pT := bytes.NewReader(gridassets.Pointer)
 	PointerImg, _, err = ebitenutil.NewImageFromReader(pT)
 	handleErr(err)
+}
+
+// init fonts
+func init() {
+	var err error
+	misakiGothic2ndSrc, err = text.NewGoTextFaceSource(bytes.NewReader(fonts.MisakiGothic2ndFont))
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 type BlockKind int
@@ -79,12 +134,11 @@ type CodeBlock struct {
 	X int // It's a grid!!
 	Y int // Grid too!
 
-	upper int64
-	lower int64
+	Lower *int64
 
 	// only for if block
-	mid     int64
-	boolean BooleanKind
+	Mid     *int64
+	Boolean *BooleanKind
 }
 
 type Gridsys struct {
@@ -93,7 +147,9 @@ type Gridsys struct {
 	tY       float64 // translate Y
 
 	HeadBlocks []int64
-	Blocks     map[int64]CodeBlock
+	Blocks     map[int64]*CodeBlock
+
+	displayFont *text.GoTextFace
 }
 
 // init new gridsys with default val
@@ -102,18 +158,19 @@ func New() *Gridsys {
 		SizeMult: 10,
 		tX:       0,
 		tY:       0,
+		Blocks:   make(map[int64]*CodeBlock),
 	}
 }
 
 // Get upper block
-func (gsys *Gridsys) GetUpper(i int64) *int64 {
-	i64 := gsys.Blocks[i].upper
-	return &i64
-}
+/*func (gsys *Gridsys) GetUpper(i int64) *int64 {
+	i64 := gsys.Blocks[i].Upper
+	return i64
+}*/
 
 func (gsys *Gridsys) GetLower(i int64) *int64 {
-	i64 := gsys.Blocks[i].lower
-	return &i64
+	i64 := gsys.Blocks[i].Lower
+	return i64
 }
 
 func (gsys *Gridsys) Tick() {
@@ -146,9 +203,27 @@ func (gsys *Gridsys) Tick() {
 
 // reset all and add one head block
 func (gsys *Gridsys) InitializeSpace() {
-	gsys.HeadBlocks = append(gsys.HeadBlocks, 1)
-	gsys.Blocks[1] = CodeBlock{
+	gsys.HeadBlocks = append(gsys.HeadBlocks, 0)
+	gsys.Blocks[0] = &CodeBlock{
 		Kind: StartBlock,
+		X:    1,
+		Y:    1,
+	}
+	// test
+	one := int64(1)
+	gsys.Blocks[0].Lower = &one
+	gsys.Blocks[1] = &CodeBlock{
+		Kind: ForInfBlock,
+		X:    1,
+		Y:    2,
+	}
+
+	two := int64(2)
+	gsys.Blocks[1].Lower = &two
+	gsys.Blocks[2] = &CodeBlock{
+		Kind: WalkBlock,
+		X:    1,
+		Y:    3,
 	}
 }
 
@@ -158,11 +233,39 @@ type Vec2 struct {
 	Y int
 }
 
+type Vec2F struct {
+	X float64
+	Y float64
+}
+
+func (gsys *Gridsys) DrawBlockPart(ebitenScr *ebiten.Image, color color.RGBA, shadowColor color.RGBA, x float64, y float64, lengx float64) {
+	vector.DrawFilledRect(ebitenScr, float32(x), float32(y), float32(lengx), 10*float32(gsys.SizeMult), color, false)
+	vector.DrawFilledRect(ebitenScr, float32(x), float32(y)+float32(9*gsys.SizeMult), float32(lengx), 1*float32(gsys.SizeMult), shadowColor, false)
+}
+
+func (gsys *Gridsys) DrawBlueBlock(ebitenScr *ebiten.Image, str string, pos Vec2F, length float64) {
+	op := &ebiten.DrawImageOptions{}
+	top := &text.DrawOptions{}
+	misakiGothic2ndFace := &text.GoTextFace{Source: misakiGothic2ndSrc, Size: 5 * gsys.SizeMult}
+
+	op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+	op.GeoM.Translate(pos.X, pos.Y)
+	ebitenScr.DrawImage(StartBlockImg, op)
+	op.GeoM.Reset()
+	op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+	op.GeoM.Translate(pos.X, pos.Y-(3*gsys.SizeMult))
+	ebitenScr.DrawImage(StartBlockCapImg, op)
+	gsys.DrawBlockPart(ebitenScr, color.RGBA{86, 147, 255, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(StartBlockImg.Bounds().Dx())), pos.Y, 100)
+	top.GeoM.Translate(pos.X+gsys.SizeMult, pos.Y+gsys.SizeMult)
+	text.Draw(ebitenScr, str, misakiGothic2ndFace, top)
+}
+
 func (gsys *Gridsys) IsTouched(codeblock *CodeBlock) {
 	switch codeblock.Kind {
 	case StartBlock:
-
 	case IfBlock:
+	case ForInfBlock:
+	case ForRangeBlock:
 	case WalkBlock:
 	case TurnRightBlock:
 	case TurnLeftBlock:
@@ -170,21 +273,125 @@ func (gsys *Gridsys) IsTouched(codeblock *CodeBlock) {
 	}
 }
 
-func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, pos Vec2) {
+func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, pos Vec2F, nestc int) {
+	op := &ebiten.DrawImageOptions{}
+	top := &text.DrawOptions{}
+	misakiGothic2ndFace := &text.GoTextFace{Source: misakiGothic2ndSrc, Size: 5 * gsys.SizeMult}
 	switch codeblock.Kind {
 	case StartBlock:
-
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y)
+		ebitenScr.DrawImage(StartBlockImg, op)
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y-(3*gsys.SizeMult))
+		ebitenScr.DrawImage(StartBlockCapImg, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(StartBlockImg.Bounds().Dx())), pos.Y, 100)
+		top.GeoM.Translate(pos.X+gsys.SizeMult, pos.Y+gsys.SizeMult)
+		text.Draw(ebitenScr, gridlocale.Start, misakiGothic2ndFace, top)
 	case IfBlock:
+		forinflen := gsys.SizeMult * 10 * 3
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y)
+		ebitenScr.DrawImage(BracketBlockImg, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y, forinflen)
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y)
+		ebitenScr.DrawImage(StartBlockImg, op)
+		op.GeoM.Reset()
+		top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
+		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
+		if nestc < 1 {
+			nestc = 1
+		}
+		for i := 1; i < nestc+1; i++ {
+			fmt.Println(i)
+			op.GeoM.Reset()
+			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+			op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(i)))
+			ebitenScr.DrawImage(BracketBlockImg, op)
+		}
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		ebitenScr.DrawImage(BracketBlockEndImg, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
+	case ForInfBlock:
+		forinflen := gsys.SizeMult * 10 * 3
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y)
+		ebitenScr.DrawImage(BracketBlockImg, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y, forinflen)
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y)
+		ebitenScr.DrawImage(StartBlockImg, op)
+		op.GeoM.Reset()
+		top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
+		text.Draw(ebitenScr, gridlocale.If, misakiGothic2ndFace, top)
+		if nestc < 1 {
+			nestc = 1
+		}
+		for i := 1; i < nestc+1; i++ {
+			fmt.Println(i)
+			op.GeoM.Reset()
+			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+			op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(i)))
+			ebitenScr.DrawImage(BracketBlockImg, op)
+		}
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		ebitenScr.DrawImage(BracketBlockEndImg, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
+	case ForRangeBlock:
+		forinflen := gsys.SizeMult * 10 * 3
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y)
+		ebitenScr.DrawImage(BracketBlockImg, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y, forinflen)
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y)
+		ebitenScr.DrawImage(StartBlockImg, op)
+		op.GeoM.Reset()
+		top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
+		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
+		if nestc < 1 {
+			nestc = 1
+		}
+		for i := 1; i < nestc+1; i++ {
+			fmt.Println(i)
+			op.GeoM.Reset()
+			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+			op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(i)))
+			ebitenScr.DrawImage(BracketBlockImg, op)
+		}
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		ebitenScr.DrawImage(BracketBlockEndImg, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
 	case WalkBlock:
+		gsys.DrawBlueBlock(ebitenScr, gridlocale.Walk, Vec2F{pos.X, pos.Y}, 50)
 	case TurnRightBlock:
 	case TurnLeftBlock:
 	case FlipBlock:
 	}
 }
 
-func (gsys *Gridsys) DrawAllBlocks(ebitenScr *ebiten.Image, pos Vec2) {
+func (gsys *Gridsys) DrawBlockCluster(ebitenScr *ebiten.Image, startcodeblock int64, startpos Vec2F) {
+	gsys.DrawBlock(ebitenScr, gsys.Blocks[startcodeblock], startpos, 2)
+	if gsys.Blocks[startcodeblock].Lower != nil {
+		startpos.Y += 10 * gsys.SizeMult
+		gsys.DrawBlockCluster(ebitenScr, *gsys.Blocks[startcodeblock].Lower, startpos)
+	}
+}
+
+func (gsys *Gridsys) DrawAllBlocks(ebitenScr *ebiten.Image, pos Vec2F) {
 	for _, id := range gsys.HeadBlocks {
-		fmt.Println(id)
+		gsys.DrawBlockCluster(ebitenScr, id, pos)
 	}
 }
 
@@ -254,9 +461,12 @@ func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
 		ebitenScr.DrawImage(PointerImg, op)
 		op.GeoM.Reset()
 	}
+	// draw block
+	gsys.DrawAllBlocks(ebitenScr, Vec2F{10 * gsys.SizeMult * gsys.tX, 10 * gsys.SizeMult * gsys.tY})
 
 	// palette
 	separate := 7
 	edratio := 4
+
 	vector.DrawFilledRect(ebitenScr, float32(wx/separate*edratio), 0, float32(wx/separate*separate-edratio), float32(wy), color.RGBA{150, 150, 150, 255}, false)
 }

@@ -16,9 +16,8 @@ type EditGoph struct {
 }
 
 func NewEditor() EditGoph {
-	gs := gridsys.Gridsys{
-		SizeMult: 8,
-	}
+	gs := *gridsys.New()
+	gs.SizeMult = 6
 	return EditGoph{
 		// autorescale may work
 		EbitenScr: ebiten.NewImage(1, 1),
