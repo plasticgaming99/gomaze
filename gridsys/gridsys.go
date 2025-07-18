@@ -10,6 +10,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	text "github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	rd "github.com/plasticgaming99/gomaze/_lib/randoms"
@@ -31,6 +32,7 @@ var (
 	StartBlockCapImg              *ebiten.Image
 	BracketBlockImg               *ebiten.Image
 	BracketBlockEndImg            *ebiten.Image
+	BracketBlockEnd2Img           *ebiten.Image
 	ForBlockHorizontalImg         *ebiten.Image
 	IfBlockHorizontalFirstImg     *ebiten.Image
 	IfBlockHorizontalEmptyImg     *ebiten.Image
@@ -67,6 +69,10 @@ func init() {
 
 	brBE := bytes.NewReader(gridassets.BracketEnd)
 	BracketBlockEndImg, _, err = ebitenutil.NewImageFromReader(brBE)
+	handleErr(err)
+
+	brBE2 := bytes.NewReader(gridassets.BracketEnd2)
+	BracketBlockEnd2Img, _, err = ebitenutil.NewImageFromReader(brBE2)
 	handleErr(err)
 
 	fBH := bytes.NewReader(gridassets.ForBlockHorz)
@@ -128,17 +134,28 @@ const (
 	LeftIsWall
 )
 
+// block position or some
+type Vec2 struct {
+	X int
+	Y int
+}
+
 type CodeBlock struct {
 	Kind BlockKind
 
-	X int // It's a grid!!
-	Y int // Grid too!
+	Pos *Vec2 // tile
+	Vec *Vec2 // for dragging
 
-	Lower *int64
+	Length int // pls set
 
-	// only for if block
-	Mid     *int64
+	// stroke
+	dragged bool
+
+	// for if and some
 	Boolean *BooleanKind
+	// if implements bool, YOU MUST SET
+	BoolStart int
+	BoolEnd   int
 }
 
 type Gridsys struct {
@@ -146,8 +163,9 @@ type Gridsys struct {
 	tX       float64 // translate X
 	tY       float64 // translate Y
 
-	HeadBlocks []int64
-	Blocks     map[int64]*CodeBlock
+	Blocks map[Vec2]*CodeBlock
+
+	strokes map[*Stroke]struct{}
 
 	displayFont *text.GoTextFace
 }
@@ -158,22 +176,176 @@ func New() *Gridsys {
 		SizeMult: 10,
 		tX:       0,
 		tY:       0,
-		Blocks:   make(map[int64]*CodeBlock),
+		Blocks:   make(map[Vec2]*CodeBlock),
+		strokes:  make(map[*Stroke]struct{}),
 	}
 }
 
-// Get upper block
-/*func (gsys *Gridsys) GetUpper(i int64) *int64 {
-	i64 := gsys.Blocks[i].Upper
-	return i64
-}*/
+type strokemouse struct{}
 
-func (gsys *Gridsys) GetLower(i int64) *int64 {
-	i64 := gsys.Blocks[i].Lower
-	return i64
+func (strkm *strokemouse) Position() (int, int) {
+	return ebiten.CursorPosition()
+}
+
+func (strkm *strokemouse) IsJustReleased() bool {
+	return inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft)
+}
+
+type Stroke struct {
+	source strokemouse
+
+	// offsetX and offsetY represents a relative value from the sprite's upper-left position to the cursor position.
+	offsetX int
+	offsetY int
+
+	// sprite represents a sprite being dragged.
+	codeblock *CodeBlock
+}
+
+func NewStroke(source strokemouse, codeblock *CodeBlock, blockpos *Vec2, gsys *Gridsys) *Stroke {
+	codeblock.dragged = true
+	x, y := source.Position()
+
+	// ビューポートのオフセットを考慮して Vec を基にオフセットを計算
+	offsetX := x - (codeblock.Vec.X + int(10*gsys.SizeMult*gsys.tX))
+	offsetY := y - (codeblock.Vec.Y + int(10*gsys.SizeMult*gsys.tY))
+
+	return &Stroke{
+		source:    source,
+		offsetX:   offsetX,
+		offsetY:   offsetY,
+		codeblock: codeblock,
+	}
+}
+
+func (block *CodeBlock) In(x, y int, gsys *Gridsys) bool {
+	if block.Pos == nil {
+		return false
+	}
+
+	// ヒットボックスを拡大（例: 1.5倍）
+	scale := 1.5
+	blockWidth := int(10 * gsys.SizeMult * 8 * scale)
+	blockHeight := int(10 * gsys.SizeMult * scale)
+	gridX := int(float64(block.Pos.X)*10*gsys.SizeMult + 10*gsys.SizeMult*gsys.tX - float64(blockWidth-int(10*gsys.SizeMult*8))/2)
+	gridY := int(float64(block.Pos.Y)*10*gsys.SizeMult + 10*gsys.SizeMult*gsys.tY - float64(blockHeight-int(10*gsys.SizeMult))/2)
+
+	return x >= gridX && x <= gridX+blockWidth && y >= gridY && y <= gridY+blockHeight
+}
+
+func (gsys *Gridsys) BlockAt(x, y int) *CodeBlock {
+	// As the sprites are ordered from back to front,
+	// search the clicked/touched sprite in reverse order.
+	for _, cb := range gsys.Blocks {
+		if cb.In(x, y, gsys) {
+			return cb
+		}
+	}
+	/*for i := len() - 1; i >= 0; i-- {
+	s := g.gsprites[i]
+	if s.In(x, y) {
+		return s
+	}
+	}*/
+	return nil
+}
+
+func (cb *CodeBlock) MoveTo(x, y int, sizemult float64, screensiz Vec2, gsys *Gridsys) {
+	// ビューポートのオフセットを考慮
+	offsetX := int(10 * sizemult * gsys.tX)
+	offsetY := int(10 * sizemult * gsys.tY)
+	cb.Vec.X = x - offsetX
+	cb.Vec.Y = y - offsetY
+
+	// 画面外に出ないように制限
+	w, h := int(10*sizemult*8), int(10*sizemult)
+	if cb.Vec.X < 0 {
+		cb.Vec.X = 0
+	}
+	if cb.Vec.X > screensiz.X-w {
+		cb.Vec.X = screensiz.X - w
+	}
+	if cb.Vec.Y < 0 {
+		cb.Vec.Y = 0
+	}
+	if cb.Vec.Y > screensiz.Y-h {
+		cb.Vec.Y = screensiz.Y - h
+	}
+}
+
+func (cb *CodeBlock) SnapToGrid(sizemult float64, gsys *Gridsys) {
+	if cb.Vec == nil || cb.Pos == nil {
+		return
+	}
+	oldPos := *cb.Pos
+
+	gridSize := int(10 * sizemult)
+	// ビューポートのオフセットを考慮
+	offsetX := int(10 * sizemult * gsys.tX)
+	offsetY := int(10 * sizemult * gsys.tY)
+	gridX := int(math.Round(float64(cb.Vec.X+offsetX) / float64(gridSize)))
+	gridY := int(math.Round(float64(cb.Vec.Y+offsetY) / float64(gridSize)))
+	newPos := Vec2{X: gridX, Y: gridY}
+
+	// 重複チェック
+	if _, exists := gsys.Blocks[newPos]; exists {
+		// 重複がある場合、元の位置に戻す
+		cb.Vec.X = oldPos.X*gridSize - offsetX
+		cb.Vec.Y = oldPos.Y*gridSize - offsetY
+		return
+	}
+
+	// 重複がない場合、位置を更新
+	cb.Pos = &newPos
+	cb.Vec.X = gridX*gridSize - offsetX
+	cb.Vec.Y = gridY*gridSize - offsetY
+
+	// マップのキーを更新
+	if gsys != nil {
+		delete(gsys.Blocks, oldPos)
+		gsys.Blocks[newPos] = cb
+	}
+}
+
+func (s *Stroke) Update(gsys *Gridsys) {
+	if !s.codeblock.dragged {
+		return
+	}
+
+	if s.source.IsJustReleased() {
+		s.codeblock.dragged = false
+		s.codeblock.SnapToGrid(gsys.SizeMult, gsys)
+		return
+	}
+
+	x, y := s.source.Position()
+	x -= s.offsetX
+	y -= s.offsetY
+
+	// ビューポートのオフセットを考慮
+	offsetX := int(10 * gsys.SizeMult * gsys.tX)
+	offsetY := int(10 * gsys.SizeMult * gsys.tY)
+	x += offsetX
+	y += offsetY
+
+	s.codeblock.MoveTo(x, y, gsys.SizeMult, Vec2{2000, 2000}, gsys)
 }
 
 func (gsys *Gridsys) Tick() {
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if sp := gsys.BlockAt(ebiten.CursorPosition()); sp != nil {
+			s := NewStroke(strokemouse{}, sp, sp.Pos, gsys)
+			gsys.strokes[s] = struct{}{}
+		}
+	}
+
+	for s := range gsys.strokes {
+		s.Update(gsys)
+		if !s.codeblock.dragged {
+			delete(gsys.strokes, s)
+		}
+	}
+
 	//x, y := ebiten.CursorPosition()
 	switch {
 	case rd.RepeatingKeyPressed(ebiten.KeyLeft):
@@ -203,34 +375,22 @@ func (gsys *Gridsys) Tick() {
 
 // reset all and add one head block
 func (gsys *Gridsys) InitializeSpace() {
-	gsys.HeadBlocks = append(gsys.HeadBlocks, 0)
-	gsys.Blocks[0] = &CodeBlock{
+	grid := 10 * int(gsys.SizeMult)
+	gsys.Blocks[Vec2{1, 1}] = &CodeBlock{
 		Kind: StartBlock,
-		X:    1,
-		Y:    1,
+		Pos:  &Vec2{X: 1, Y: 1},
+		Vec:  &Vec2{X: 1 * grid, Y: 1 * grid}, // ピクセル座標
 	}
-	// test
-	one := int64(1)
-	gsys.Blocks[0].Lower = &one
-	gsys.Blocks[1] = &CodeBlock{
+	gsys.Blocks[Vec2{1, 2}] = &CodeBlock{
 		Kind: ForInfBlock,
-		X:    1,
-		Y:    2,
+		Pos:  &Vec2{X: 1, Y: 2},
+		Vec:  &Vec2{X: 1 * grid, Y: 2 * grid},
 	}
-
-	two := int64(2)
-	gsys.Blocks[1].Lower = &two
-	gsys.Blocks[2] = &CodeBlock{
+	gsys.Blocks[Vec2{2, 3}] = &CodeBlock{
 		Kind: WalkBlock,
-		X:    1,
-		Y:    3,
+		Pos:  &Vec2{X: 2, Y: 3},
+		Vec:  &Vec2{X: 2 * grid, Y: 3 * grid},
 	}
-}
-
-// just for settings
-type Vec2 struct {
-	X int
-	Y int
 }
 
 type Vec2F struct {
@@ -250,13 +410,11 @@ func (gsys *Gridsys) DrawBlueBlock(ebitenScr *ebiten.Image, str string, pos Vec2
 
 	op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 	op.GeoM.Translate(pos.X, pos.Y)
-	ebitenScr.DrawImage(StartBlockImg, op)
+	ebitenScr.DrawImage(BlockBlueImg, op)
 	op.GeoM.Reset()
 	op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-	op.GeoM.Translate(pos.X, pos.Y-(3*gsys.SizeMult))
-	ebitenScr.DrawImage(StartBlockCapImg, op)
-	gsys.DrawBlockPart(ebitenScr, color.RGBA{86, 147, 255, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(StartBlockImg.Bounds().Dx())), pos.Y, 100)
-	top.GeoM.Translate(pos.X+gsys.SizeMult, pos.Y+gsys.SizeMult)
+	gsys.DrawBlockPart(ebitenScr, color.RGBA{86, 147, 255, 255}, color.RGBA{61, 105, 181, 255}, pos.X+(gsys.SizeMult*float64(StartBlockImg.Bounds().Dx())), pos.Y, length)
+	top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
 	text.Draw(ebitenScr, str, misakiGothic2ndFace, top)
 }
 
@@ -277,17 +435,33 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 	op := &ebiten.DrawImageOptions{}
 	top := &text.DrawOptions{}
 	misakiGothic2ndFace := &text.GoTextFace{Source: misakiGothic2ndSrc, Size: 5 * gsys.SizeMult}
+
+	var tempVec Vec2F
+	if codeblock.dragged && codeblock.Vec != nil {
+		// ドラッグ中はVec（ピクセル座標）＋ビューポートオフセット
+		tempVec.X = float64(codeblock.Vec.X) + 10*gsys.SizeMult*gsys.tX
+		tempVec.Y = float64(codeblock.Vec.Y) + 10*gsys.SizeMult*gsys.tY
+	} else if codeblock.Pos != nil {
+		// 通常時はグリッド座標＋ビューポートオフセット
+		tempVec.X = 10*gsys.SizeMult*float64(codeblock.Pos.X) + 10*gsys.SizeMult*gsys.tX
+		tempVec.Y = 10*gsys.SizeMult*float64(codeblock.Pos.Y) + 10*gsys.SizeMult*gsys.tY
+	} else {
+		tempVec = pos // デフォルトの位置
+	}
+
 	switch codeblock.Kind {
 	case StartBlock:
+		fmt.Println(tempVec)
+
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X, pos.Y)
+		op.GeoM.Translate(tempVec.X, tempVec.Y)
 		ebitenScr.DrawImage(StartBlockImg, op)
 		op.GeoM.Reset()
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X, pos.Y-(3*gsys.SizeMult))
+		op.GeoM.Translate(tempVec.X, tempVec.Y-(3*gsys.SizeMult))
 		ebitenScr.DrawImage(StartBlockCapImg, op)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(StartBlockImg.Bounds().Dx())), pos.Y, 100)
-		top.GeoM.Translate(pos.X+gsys.SizeMult, pos.Y+gsys.SizeMult)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, tempVec.X+(gsys.SizeMult*float64(StartBlockImg.Bounds().Dx())), tempVec.Y, 100)
+		top.GeoM.Translate(tempVec.X+gsys.SizeMult, tempVec.Y+gsys.SizeMult)
 		text.Draw(ebitenScr, gridlocale.Start, misakiGothic2ndFace, top)
 	case IfBlock:
 		forinflen := gsys.SizeMult * 10 * 3
@@ -316,7 +490,10 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 		op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
 		ebitenScr.DrawImage(BracketBlockEndImg, op)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
+		op.GeoM.Reset()
+		op.GeoM.Translate(pos.X+float64(BracketBlockEndImg.Bounds().Dx()), pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		ebitenScr.DrawImage(BracketBlockEnd2Img, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()+1)), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
 	case ForInfBlock:
 		forinflen := gsys.SizeMult * 10 * 3
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
@@ -325,11 +502,11 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y, forinflen)
 		op.GeoM.Reset()
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y)
+		op.GeoM.Translate(pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()+1)), pos.Y)
 		ebitenScr.DrawImage(StartBlockImg, op)
 		op.GeoM.Reset()
 		top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
-		text.Draw(ebitenScr, gridlocale.If, misakiGothic2ndFace, top)
+		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
 		if nestc < 1 {
 			nestc = 1
 		}
@@ -344,7 +521,12 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 		op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
 		ebitenScr.DrawImage(BracketBlockEndImg, op)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
+		op.GeoM.Reset()
+		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
+		op.GeoM.Translate(pos.X+gsys.SizeMult*float64(BracketBlockEndImg.Bounds().Dx()+1), pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		ebitenScr.DrawImage(BracketBlockEnd2Img, op)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+gsys.SizeMult*float64(BracketBlockEndImg.Bounds().Dx()+1), pos.Y, 1)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()*2+1)), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen-(9*3-1))
 	case ForRangeBlock:
 		forinflen := gsys.SizeMult * 10 * 3
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
@@ -374,28 +556,26 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 		ebitenScr.DrawImage(BracketBlockEndImg, op)
 		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
 	case WalkBlock:
-		gsys.DrawBlueBlock(ebitenScr, gridlocale.Walk, Vec2F{pos.X, pos.Y}, 50)
+		gsys.DrawBlueBlock(ebitenScr, gridlocale.Walk, Vec2F{pos.X, pos.Y}, 24*gsys.SizeMult)
 	case TurnRightBlock:
 	case TurnLeftBlock:
 	case FlipBlock:
 	}
 }
 
-func (gsys *Gridsys) DrawBlockCluster(ebitenScr *ebiten.Image, startcodeblock int64, startpos Vec2F) {
-	gsys.DrawBlock(ebitenScr, gsys.Blocks[startcodeblock], startpos, 2)
-	if gsys.Blocks[startcodeblock].Lower != nil {
-		startpos.Y += 10 * gsys.SizeMult
-		gsys.DrawBlockCluster(ebitenScr, *gsys.Blocks[startcodeblock].Lower, startpos)
-	}
-}
-
 func (gsys *Gridsys) DrawAllBlocks(ebitenScr *ebiten.Image, pos Vec2F) {
-	for _, id := range gsys.HeadBlocks {
-		gsys.DrawBlockCluster(ebitenScr, id, pos)
+	for v2, some := range gsys.Blocks {
+		// v2 to correct v2f
+		v2f := Vec2F{
+			X: 10*gsys.SizeMult*float64(v2.X) + 10*gsys.SizeMult*gsys.tX,
+			Y: 10*gsys.SizeMult*float64(v2.Y) + 10*gsys.SizeMult*gsys.tY,
+		}
+		gsys.DrawBlock(ebitenScr, some, v2f, 1)
 	}
 }
 
 func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
+	fmt.Println(gsys.tX, gsys.tY)
 	// GRID
 	wx, wy := size.X, size.Y
 	baseX, baseY := math.Mod(gsys.tX, 1), math.Mod(gsys.tY, 1)

@@ -11,6 +11,8 @@ var (
 	BracketBlock []byte
 	//go:embed bracketend.png
 	BracketEnd []byte
+	//go:embed bracketend2.png
+	BracketEnd2 []byte
 	//go:embed forblockhorz.png
 	ForBlockHorz []byte
 	//go:embed ifblockhorzfirst.png
