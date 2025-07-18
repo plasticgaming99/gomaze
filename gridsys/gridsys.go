@@ -224,7 +224,7 @@ func (block *CodeBlock) In(x, y int, gsys *Gridsys) bool {
 	}
 
 	// ヒットボックスを拡大（例: 1.5倍）
-	scale := 1.5
+	scale := 1.
 	blockWidth := int(10 * gsys.SizeMult * 8 * scale)
 	blockHeight := int(10 * gsys.SizeMult * scale)
 	gridX := int(float64(block.Pos.X)*10*gsys.SizeMult + 10*gsys.SizeMult*gsys.tX - float64(blockWidth-int(10*gsys.SizeMult*8))/2)
@@ -254,11 +254,11 @@ func (cb *CodeBlock) MoveTo(x, y int, sizemult float64, screensiz Vec2, gsys *Gr
 	// ビューポートのオフセットを考慮
 	offsetX := int(10 * sizemult * gsys.tX)
 	offsetY := int(10 * sizemult * gsys.tY)
-	cb.Vec.X = x - offsetX
-	cb.Vec.Y = y - offsetY
+	cb.Vec.X = x - offsetX*2
+	cb.Vec.Y = y - offsetY*2
 
 	// 画面外に出ないように制限
-	w, h := int(10*sizemult*8), int(10*sizemult)
+	/*w, h := int(10*sizemult*8), int(10*sizemult)
 	if cb.Vec.X < 0 {
 		cb.Vec.X = 0
 	}
@@ -270,7 +270,7 @@ func (cb *CodeBlock) MoveTo(x, y int, sizemult float64, screensiz Vec2, gsys *Gr
 	}
 	if cb.Vec.Y > screensiz.Y-h {
 		cb.Vec.Y = screensiz.Y - h
-	}
+	}*/
 }
 
 func (cb *CodeBlock) SnapToGrid(sizemult float64, gsys *Gridsys) {
@@ -281,10 +281,12 @@ func (cb *CodeBlock) SnapToGrid(sizemult float64, gsys *Gridsys) {
 
 	gridSize := int(10 * sizemult)
 	// ビューポートのオフセットを考慮
-	offsetX := int(10 * sizemult * gsys.tX)
-	offsetY := int(10 * sizemult * gsys.tY)
-	gridX := int(math.Round(float64(cb.Vec.X+offsetX) / float64(gridSize)))
-	gridY := int(math.Round(float64(cb.Vec.Y+offsetY) / float64(gridSize)))
+	offsetX := /*int(10 * sizemult * gsys.tX)*/ 0
+	offsetY := /*int(10 * sizemult * gsys.tY)*/ 0
+
+	// カメラのズレを考慮してグリッド位置を計算
+	gridX := int(math.Round(float64(cb.Vec.X-offsetX) / float64(gridSize)))
+	gridY := int(math.Round(float64(cb.Vec.Y-offsetY) / float64(gridSize)))
 	newPos := Vec2{X: gridX, Y: gridY}
 
 	// 重複チェック
@@ -451,30 +453,31 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 
 	switch codeblock.Kind {
 	case StartBlock:
-		fmt.Println(tempVec)
-
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 		op.GeoM.Translate(tempVec.X, tempVec.Y)
 		ebitenScr.DrawImage(StartBlockImg, op)
 		op.GeoM.Reset()
+
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 		op.GeoM.Translate(tempVec.X, tempVec.Y-(3*gsys.SizeMult))
 		ebitenScr.DrawImage(StartBlockCapImg, op)
+
 		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, tempVec.X+(gsys.SizeMult*float64(StartBlockImg.Bounds().Dx())), tempVec.Y, 100)
 		top.GeoM.Translate(tempVec.X+gsys.SizeMult, tempVec.Y+gsys.SizeMult)
 		text.Draw(ebitenScr, gridlocale.Start, misakiGothic2ndFace, top)
 	case IfBlock:
 		forinflen := gsys.SizeMult * 10 * 3
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X, pos.Y)
+		op.GeoM.Translate(tempVec.X, tempVec.Y)
 		ebitenScr.DrawImage(BracketBlockImg, op)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y, forinflen)
+		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, tempVec.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), tempVec.Y, forinflen)
 		op.GeoM.Reset()
+
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y)
+		op.GeoM.Translate(tempVec.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), tempVec.Y)
 		ebitenScr.DrawImage(StartBlockImg, op)
 		op.GeoM.Reset()
-		top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
+		top.GeoM.Translate(tempVec.X+(gsys.SizeMult*10), tempVec.Y+gsys.SizeMult)
 		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
 		if nestc < 1 {
 			nestc = 1
@@ -483,29 +486,45 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 			fmt.Println(i)
 			op.GeoM.Reset()
 			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-			op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(i)))
+			op.GeoM.Translate(tempVec.X, tempVec.Y+(10*gsys.SizeMult*float64(i)))
 			ebitenScr.DrawImage(BracketBlockImg, op)
 		}
 		op.GeoM.Reset()
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		op.GeoM.Translate(tempVec.X, tempVec.Y+(10*gsys.SizeMult*float64(nestc+1)))
 		ebitenScr.DrawImage(BracketBlockEndImg, op)
 		op.GeoM.Reset()
-		op.GeoM.Translate(pos.X+float64(BracketBlockEndImg.Bounds().Dx()), pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		op.GeoM.Translate(tempVec.X+float64(BracketBlockEndImg.Bounds().Dx()), tempVec.Y+(10*gsys.SizeMult*float64(nestc+1)))
 		ebitenScr.DrawImage(BracketBlockEnd2Img, op)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()+1)), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
+		gsys.DrawBlockPart(
+			ebitenScr,
+			color.RGBA{255, 221, 0, 255},
+			color.RGBA{224, 192, 0, 255},
+			tempVec.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()+1)),
+			tempVec.Y+(10*gsys.SizeMult*float64(nestc+1)),
+			forinflen,
+		)
 	case ForInfBlock:
 		forinflen := gsys.SizeMult * 10 * 3
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X, pos.Y)
+		op.GeoM.Translate(tempVec.X, tempVec.Y)
 		ebitenScr.DrawImage(BracketBlockImg, op)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y, forinflen)
+		gsys.DrawBlockPart(
+			ebitenScr,
+			color.RGBA{255, 221, 0, 255},
+			color.RGBA{224, 192, 0, 255},
+			tempVec.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())),
+			tempVec.Y,
+			forinflen,
+		)
 		op.GeoM.Reset()
+
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()+1)), pos.Y)
+		op.GeoM.Translate(tempVec.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()+1)), tempVec.Y)
 		ebitenScr.DrawImage(StartBlockImg, op)
 		op.GeoM.Reset()
-		top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
+
+		top.GeoM.Translate(tempVec.X+(gsys.SizeMult*10), tempVec.Y+gsys.SizeMult)
 		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
 		if nestc < 1 {
 			nestc = 1
@@ -514,19 +533,35 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 			fmt.Println(i)
 			op.GeoM.Reset()
 			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-			op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(i)))
+			op.GeoM.Translate(tempVec.X, tempVec.Y+(10*gsys.SizeMult*float64(i)))
 			ebitenScr.DrawImage(BracketBlockImg, op)
 		}
 		op.GeoM.Reset()
+
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		op.GeoM.Translate(tempVec.X, tempVec.Y+(10*gsys.SizeMult*float64(nestc+1)))
 		ebitenScr.DrawImage(BracketBlockEndImg, op)
 		op.GeoM.Reset()
+
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
-		op.GeoM.Translate(pos.X+gsys.SizeMult*float64(BracketBlockEndImg.Bounds().Dx()+1), pos.Y+(10*gsys.SizeMult*float64(nestc+1)))
+		op.GeoM.Translate(tempVec.X+gsys.SizeMult*float64(BracketBlockEndImg.Bounds().Dx()+1), tempVec.Y+(10*gsys.SizeMult*float64(nestc+1)))
 		ebitenScr.DrawImage(BracketBlockEnd2Img, op)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+gsys.SizeMult*float64(BracketBlockEndImg.Bounds().Dx()+1), pos.Y, 1)
-		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()*2+1)), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen-(9*3-1))
+		gsys.DrawBlockPart(
+			ebitenScr,
+			color.RGBA{255, 221, 0, 255},
+			color.RGBA{224, 192, 0, 255},
+			tempVec.X+(gsys.SizeMult*float64(BracketBlockEndImg.Bounds().Dx())),
+			tempVec.Y+(10*gsys.SizeMult*float64(nestc+1)),
+			1*gsys.SizeMult,
+		)
+		gsys.DrawBlockPart(
+			ebitenScr,
+			color.RGBA{255, 221, 0, 255},
+			color.RGBA{224, 192, 0, 255},
+			tempVec.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx()*2+1)),
+			tempVec.Y+(10*gsys.SizeMult*float64(nestc+1)),
+			forinflen-(10*gsys.SizeMult),
+		)
 	case ForRangeBlock:
 		forinflen := gsys.SizeMult * 10 * 3
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
@@ -556,10 +591,13 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 		ebitenScr.DrawImage(BracketBlockEndImg, op)
 		gsys.DrawBlockPart(ebitenScr, color.RGBA{255, 221, 0, 255}, color.RGBA{224, 192, 0, 255}, pos.X+(gsys.SizeMult*float64(BracketBlockImg.Bounds().Dx())), pos.Y+(10*gsys.SizeMult*float64(nestc+1)), forinflen)
 	case WalkBlock:
-		gsys.DrawBlueBlock(ebitenScr, gridlocale.Walk, Vec2F{pos.X, pos.Y}, 24*gsys.SizeMult)
+		gsys.DrawBlueBlock(ebitenScr, gridlocale.Walk, Vec2F{tempVec.X, tempVec.Y}, 24*gsys.SizeMult)
 	case TurnRightBlock:
+		gsys.DrawBlueBlock(ebitenScr, gridlocale.TurnRight, Vec2F{tempVec.X, tempVec.Y}, 36*gsys.SizeMult)
 	case TurnLeftBlock:
+		gsys.DrawBlueBlock(ebitenScr, gridlocale.TurnLeft, Vec2F{tempVec.X, tempVec.Y}, 36*gsys.SizeMult)
 	case FlipBlock:
+		gsys.DrawBlueBlock(ebitenScr, gridlocale.Flip, Vec2F{tempVec.X, tempVec.Y}, 30*gsys.SizeMult)
 	}
 }
 
@@ -625,6 +663,16 @@ func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
 			//fmt.Println("x", x, "relTileX", relTileX, "PointerX", PointerX, "=>", x-relTileX)
 		}
 	}
+	// draw block
+	gsys.DrawAllBlocks(ebitenScr, Vec2F{10 * gsys.SizeMult * gsys.tX, 10 * gsys.SizeMult * gsys.tY})
+
+	// palette
+	separate := 7
+	edratio := 4
+
+	vector.DrawFilledRect(ebitenScr, float32(wx/separate*edratio), 0, float32(wx/separate*separate-edratio), float32(wy), color.RGBA{150, 150, 150, 255}, false)
+
+	//cursor
 	if dc {
 		var adjx, adjy int
 		if 0 > relTileX {
@@ -641,12 +689,4 @@ func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
 		ebitenScr.DrawImage(PointerImg, op)
 		op.GeoM.Reset()
 	}
-	// draw block
-	gsys.DrawAllBlocks(ebitenScr, Vec2F{10 * gsys.SizeMult * gsys.tX, 10 * gsys.SizeMult * gsys.tY})
-
-	// palette
-	separate := 7
-	edratio := 4
-
-	vector.DrawFilledRect(ebitenScr, float32(wx/separate*edratio), 0, float32(wx/separate*separate-edratio), float32(wy), color.RGBA{150, 150, 150, 255}, false)
 }
