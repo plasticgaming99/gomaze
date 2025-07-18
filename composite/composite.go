@@ -1,7 +1,6 @@
 package composite
 
 import (
-	"fmt"
 	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -17,7 +16,7 @@ type EditGoph struct {
 
 func NewEditor() EditGoph {
 	gs := *gridsys.New()
-	gs.SizeMult = 6
+	gs.SizeMult = 4
 	return EditGoph{
 		// autorescale may work
 		EbitenScr: ebiten.NewImage(1, 1),
@@ -55,7 +54,7 @@ func (gph *EditGoph) Drawer() {
 		runtime.GC()
 	}
 	if gph.graphical {
-		gph.Gridsys.Draw(gph.EbitenScr, wl, ws)
+		gph.Gridsys.Draw(gph.EbitenScr, wl, &ws)
 	} else {
 		//gph.Photon.PhotonDrawer(gph.EbitenScr)
 	}
@@ -122,7 +121,7 @@ func (cp *Compositor) Draw(img *ebiten.Image, edit EditGoph, mz *maze.Maze) {
 	if zt {
 		op.GeoM.Translate(basex, (my-msy)/2)
 	} else {
-		fmt.Println(my, mx/mtx)
+		//fmt.Println(my, mx/mtx)
 		op.GeoM.Translate((mx-msx)/2+basex, 0)
 	}
 	img.DrawImage(cp.MazeImg, op)

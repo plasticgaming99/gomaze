@@ -17,6 +17,7 @@ import (
 	"github.com/plasticgaming99/gomaze/assets/fonts"
 	gridassets "github.com/plasticgaming99/gomaze/gridsys/assets"
 	"github.com/plasticgaming99/gomaze/gridsys/gridlocale"
+	"github.com/plasticgaming99/gomaze/maze"
 )
 
 // i'm implementing
@@ -163,22 +164,32 @@ type Gridsys struct {
 	tX       float64 // translate X
 	tY       float64 // translate Y
 
+	gsize *Vec2
+
 	Blocks map[Vec2]*CodeBlock
 
 	strokes map[*Stroke]struct{}
 
 	displayFont *text.GoTextFace
+
+	paletteoffsette *int
+
+	startblockVec Vec2
+
+	counttps int
 }
 
 // init new gridsys with default val
 func New() *Gridsys {
-	return &Gridsys{
+	gsys := &Gridsys{
 		SizeMult: 10,
 		tX:       0,
 		tY:       0,
 		Blocks:   make(map[Vec2]*CodeBlock),
 		strokes:  make(map[*Stroke]struct{}),
 	}
+	gsys.InitializePalette()
+	return gsys
 }
 
 type strokemouse struct{}
@@ -206,10 +217,20 @@ func NewStroke(source strokemouse, codeblock *CodeBlock, blockpos *Vec2, gsys *G
 	codeblock.dragged = true
 	x, y := source.Position()
 
-	// ビューポートのオフセットを考慮して Vec を基にオフセットを計算
+	// パレットからの場合、ブロックの中心がマウスに来るように補正してグリッド座標に変換
+	if blockpos.X == 10000 {
+		// 仮にブロック幅はワークスペース用で 4タイル分とする（タイルサイズ = 10*gsys.SizeMult）
+		blockWidth := 10 * gsys.SizeMult * 4
+		blockHeight := 10 * gsys.SizeMult // 高さは1タイル分とする
+		newX := int(math.Round((float64(x) - blockWidth/2) / (10 * gsys.SizeMult)))
+		newY := int(math.Round((float64(y) - blockHeight/2) / (10 * gsys.SizeMult)))
+		blockpos.X = newX
+		blockpos.Y = newY
+		codeblock.Pos = blockpos
+	}
+
 	offsetX := x - (codeblock.Vec.X + int(10*gsys.SizeMult*gsys.tX))
 	offsetY := y - (codeblock.Vec.Y + int(10*gsys.SizeMult*gsys.tY))
-
 	return &Stroke{
 		source:    source,
 		offsetX:   offsetX,
@@ -218,35 +239,66 @@ func NewStroke(source strokemouse, codeblock *CodeBlock, blockpos *Vec2, gsys *G
 	}
 }
 
+func (gsys *Gridsys) EnsurePalette() {
+	grid := 10 * int(gsys.SizeMult)
+	for i, kind := range PaletteBlocks {
+		key := Vec2{X: 10000, Y: i}
+		if _, ok := gsys.Blocks[key]; !ok {
+			gsys.Blocks[key] = &CodeBlock{
+				Kind: kind,
+				Pos:  &Vec2{X: 10000, Y: i},
+				Vec:  &Vec2{X: 0, Y: i * grid},
+			}
+		}
+	}
+}
+
+//const PaletteOffsetX = 400 // パレット領域の左上X座標（レイアウトに合わせて調整）
+
 func (block *CodeBlock) In(x, y int, gsys *Gridsys) bool {
 	if block.Pos == nil {
 		return false
 	}
 
-	// ヒットボックスを拡大（例: 1.5倍）
+	// 共通のサイズ計算（ワークスペース用）
 	scale := 1.
-	blockWidth := int(10 * gsys.SizeMult * 8 * scale)
+	blockWidth := int(10 * gsys.SizeMult * 4 * scale)
 	blockHeight := int(10 * gsys.SizeMult * scale)
-	gridX := int(float64(block.Pos.X)*10*gsys.SizeMult + 10*gsys.SizeMult*gsys.tX - float64(blockWidth-int(10*gsys.SizeMult*8))/2)
-	gridY := int(float64(block.Pos.Y)*10*gsys.SizeMult + 10*gsys.SizeMult*gsys.tY - float64(blockHeight-int(10*gsys.SizeMult))/2)
 
-	return x >= gridX && x <= gridX+blockWidth && y >= gridY && y <= gridY+blockHeight
+	// パレットの場合と通常の場合で処理を分岐
+	if block.Pos.X == 10000 {
+		x, y := ebiten.CursorPosition()
+		// パレット用ヒットボックス
+		padding := int(1.5 * 5 * gsys.SizeMult)
+		// パレット内では Pos.Y はブロックのインデックスとして使っている前提
+		gridX := int(180) + padding
+		// InitializePalette で使っている grid 値と一致させる（例: 10*gsys.SizeMult を整数にキャスト）
+		grid := int(10 * gsys.SizeMult)
+		gridY := padding + block.Pos.Y*grid
+		fmt.Println(gsys.paletteoffsette)
+		fmt.Println("           ", gridX, gridY)
+		// ヒット判定（ここではシンプルに矩形内かどうか）
+		return x >= gridX && x <= gridX+blockWidth &&
+			y >= gridY && y <= gridY+blockHeight
+	} else {
+		// 通常のブロック用ヒットボックス（ワークスペース側）
+		gridX := int(float64(block.Pos.X)*10*gsys.SizeMult + 10*gsys.SizeMult*gsys.tX - float64(blockWidth-int(10*gsys.SizeMult*8))/2)
+		gridY := int(float64(block.Pos.Y)*10*gsys.SizeMult + 10*gsys.SizeMult*gsys.tY - float64(blockHeight-int(10*gsys.SizeMult))/2)
+		return x >= gridX-gridX/2 && x <= gridX+blockWidth-gridX/2 &&
+			y >= gridY && y <= gridY+blockHeight
+	}
 }
 
 func (gsys *Gridsys) BlockAt(x, y int) *CodeBlock {
-	// As the sprites are ordered from back to front,
-	// search the clicked/touched sprite in reverse order.
 	for _, cb := range gsys.Blocks {
 		if cb.In(x, y, gsys) {
+			// パレット内のブロックも含めて判定
+			if cb.Pos.X == 10000 {
+				return cb
+			}
 			return cb
 		}
 	}
-	/*for i := len() - 1; i >= 0; i-- {
-	s := g.gsprites[i]
-	if s.In(x, y) {
-		return s
-	}
-	}*/
 	return nil
 }
 
@@ -333,14 +385,72 @@ func (s *Stroke) Update(gsys *Gridsys) {
 	s.codeblock.MoveTo(x, y, gsys.SizeMult, Vec2{2000, 2000}, gsys)
 }
 
-func (gsys *Gridsys) Tick() {
+var nowinloop bool
+var loopstart Vec2
+
+// set cursor to start block before
+func (gsys *Gridsys) InterpretTick(mz *maze.Maze) {
+	b, ok := gsys.Blocks[Vec2{X: PointerX, Y: PointerY}]
+	if ok {
+		switch b.Kind {
+		case StartBlock:
+			PointerY++
+		case WalkBlock:
+			mz.Gopher[0].Walk(mz, 1)
+			PointerY++
+		case TurnLeftBlock:
+			mz.Gopher[0].Rotate(-1)
+			PointerY++
+		case TurnRightBlock:
+			mz.Gopher[0].Rotate(1)
+			PointerY++
+		case FlipBlock:
+			mz.Gopher[0].Rotate(2)
+			PointerY++
+		case ForInfBlock:
+			nowinloop = true
+			PointerX++
+			PointerY++
+			loopstart = Vec2{X: PointerX, Y: PointerY}
+		}
+	}
+}
+
+var Interpret bool
+
+func (gsys *Gridsys) Tick(mz *maze.Maze) {
+	if gsys.counttps == 20 && Interpret {
+		gsys.InterpretTick(mz)
+		gsys.counttps = 0
+	}
+
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		if sp := gsys.BlockAt(ebiten.CursorPosition()); sp != nil {
-			s := NewStroke(strokemouse{}, sp, sp.Pos, gsys)
-			gsys.strokes[s] = struct{}{}
+		x, y := ebiten.CursorPosition()
+
+		// クリックしたブロックを取得
+		if sp := gsys.BlockAt(x, y); sp != nil {
+			if sp.Pos.X == 10000 {
+				// パレット内のブロックの場合、Pos.Xは10000になっているので新しいブロックを生成
+				newBlock := &CodeBlock{
+					Kind: sp.Kind,
+					// 初期状態はパレットのマーカー値（10000）を入れておく
+					Pos: &Vec2{X: 10000, Y: sp.Pos.Y},
+					// Vec はクリック位置を初期値とする
+					Vec: &Vec2{X: x, Y: y},
+				}
+				gsys.Blocks[*newBlock.Pos] = newBlock
+				// ドラッグ処理へ（NewStroke 内でPosが変換される）
+				s := NewStroke(strokemouse{}, newBlock, newBlock.Pos, gsys)
+				gsys.strokes[s] = struct{}{}
+			} else {
+				// 通常ブロックはそのままドラッグ可能
+				s := NewStroke(strokemouse{}, sp, sp.Pos, gsys)
+				gsys.strokes[s] = struct{}{}
+			}
 		}
 	}
 
+	// ドラッグ中ブロックを更新
 	for s := range gsys.strokes {
 		s.Update(gsys)
 		if !s.codeblock.dragged {
@@ -373,6 +483,10 @@ func (gsys *Gridsys) Tick() {
 	if ebiten.IsKeyPressed(ebiten.KeyK) {
 		gsys.tY = gsys.tY - 0.05
 	}
+
+	gsys.counttps++
+
+	gsys.EnsurePalette()
 }
 
 // reset all and add one head block
@@ -392,6 +506,44 @@ func (gsys *Gridsys) InitializeSpace() {
 		Kind: WalkBlock,
 		Pos:  &Vec2{X: 2, Y: 3},
 		Vec:  &Vec2{X: 2 * grid, Y: 3 * grid},
+	}
+	gsys.Blocks[Vec2{2, 4}] = &CodeBlock{
+		Kind: FlipBlock,
+		Pos:  &Vec2{X: 2, Y: 4},
+		Vec:  &Vec2{X: 2 * grid, Y: 4 * grid},
+	}
+	gsys.Blocks[Vec2{2, 5}] = &CodeBlock{
+		Kind: TurnLeftBlock,
+		Pos:  &Vec2{X: 2, Y: 5},
+		Vec:  &Vec2{X: 2 * grid, Y: 5 * grid},
+	}
+	gsys.Blocks[Vec2{7, 7}] = &CodeBlock{
+		Kind: ForInfBlock,
+		Pos:  &Vec2{X: 7, Y: 7},
+		Vec:  &Vec2{X: 7 * grid, Y: 7 * grid},
+	}
+}
+
+// パレット用のブロックリスト
+var PaletteBlocks = []BlockKind{
+	IfBlock,
+	ForInfBlock,
+	ForRangeBlock,
+	WalkBlock,
+	TurnRightBlock,
+	TurnLeftBlock,
+	FlipBlock,
+}
+
+// パレットの初期化
+func (gsys *Gridsys) InitializePalette() {
+	grid := 10 * int(gsys.SizeMult)
+	for i, kind := range PaletteBlocks {
+		gsys.Blocks[Vec2{X: 10000, Y: i}] = &CodeBlock{
+			Kind: kind,
+			Pos:  &Vec2{X: 10000, Y: i},
+			Vec:  &Vec2{X: 0 * grid, Y: i * grid},
+		}
 	}
 }
 
@@ -420,17 +572,45 @@ func (gsys *Gridsys) DrawBlueBlock(ebitenScr *ebiten.Image, str string, pos Vec2
 	text.Draw(ebitenScr, str, misakiGothic2ndFace, top)
 }
 
-func (gsys *Gridsys) IsTouched(codeblock *CodeBlock) {
-	switch codeblock.Kind {
-	case StartBlock:
-	case IfBlock:
-	case ForInfBlock:
-	case ForRangeBlock:
-	case WalkBlock:
-	case TurnRightBlock:
-	case TurnLeftBlock:
-	case FlipBlock:
+// netc is nested block count
+// it gets recursively
+func (gsys *Gridsys) GetNestC(pos Vec2) int {
+	// special skip
+	if pos.X == 10000 {
+		return -1
 	}
+	_, a := gsys.Blocks[pos]
+	if !a {
+		return 1
+	}
+	// c means current
+	cx, cy := pos.X+1, pos.Y+1
+	if gsys.Blocks[pos].Kind == ForInfBlock ||
+		gsys.Blocks[pos].Kind == ForRangeBlock ||
+		gsys.Blocks[pos].Kind == IfBlock {
+		//cx += 1
+	}
+	var fin bool
+	for !fin {
+		curPos := Vec2{X: cx, Y: cy}
+		//fmt.Println("chk", curPos)
+		btype, b := gsys.Blocks[curPos]
+		count := 0
+		if b {
+			switch btype.Kind {
+			case IfBlock, ForInfBlock, ForRangeBlock:
+				nc := gsys.GetNestC(Vec2{cx, cy})
+				cy += nc + 2
+				count += nc + 2
+			default:
+				count++
+				cy++
+			}
+		} else {
+			fin = true
+		}
+	}
+	return cy - pos.Y - 1
 }
 
 func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, pos Vec2F, nestc int) {
@@ -439,7 +619,9 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 	misakiGothic2ndFace := &text.GoTextFace{Source: misakiGothic2ndSrc, Size: 5 * gsys.SizeMult}
 
 	var tempVec Vec2F
-	if codeblock.dragged && codeblock.Vec != nil {
+	if codeblock.Pos.X == 10000 {
+		tempVec = pos
+	} else if codeblock.dragged && codeblock.Vec != nil {
 		// ドラッグ中はVec（ピクセル座標）＋ビューポートオフセット
 		tempVec.X = float64(codeblock.Vec.X) + 10*gsys.SizeMult*gsys.tX
 		tempVec.Y = float64(codeblock.Vec.Y) + 10*gsys.SizeMult*gsys.tY
@@ -453,6 +635,7 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 
 	switch codeblock.Kind {
 	case StartBlock:
+		gsys.startblockVec = *codeblock.Pos
 		op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 		op.GeoM.Translate(tempVec.X, tempVec.Y)
 		ebitenScr.DrawImage(StartBlockImg, op)
@@ -478,12 +661,15 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 		ebitenScr.DrawImage(StartBlockImg, op)
 		op.GeoM.Reset()
 		top.GeoM.Translate(tempVec.X+(gsys.SizeMult*10), tempVec.Y+gsys.SizeMult)
-		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
+		text.Draw(ebitenScr, gridlocale.If, misakiGothic2ndFace, top)
+		nestc := gsys.GetNestC(*codeblock.Pos)
+		if nestc == -1 {
+			break
+		}
 		if nestc < 1 {
 			nestc = 1
 		}
 		for i := 1; i < nestc+1; i++ {
-			fmt.Println(i)
 			op.GeoM.Reset()
 			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 			op.GeoM.Translate(tempVec.X, tempVec.Y+(10*gsys.SizeMult*float64(i)))
@@ -526,11 +712,15 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 
 		top.GeoM.Translate(tempVec.X+(gsys.SizeMult*10), tempVec.Y+gsys.SizeMult)
 		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
+
+		nestc := gsys.GetNestC(*codeblock.Pos)
+		if nestc == -1 {
+			break
+		}
 		if nestc < 1 {
 			nestc = 1
 		}
 		for i := 1; i < nestc+1; i++ {
-			fmt.Println(i)
 			op.GeoM.Reset()
 			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 			op.GeoM.Translate(tempVec.X, tempVec.Y+(10*gsys.SizeMult*float64(i)))
@@ -574,12 +764,16 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 		ebitenScr.DrawImage(StartBlockImg, op)
 		op.GeoM.Reset()
 		top.GeoM.Translate(pos.X+(gsys.SizeMult*10), pos.Y+gsys.SizeMult)
-		text.Draw(ebitenScr, gridlocale.ForInf, misakiGothic2ndFace, top)
+		text.Draw(ebitenScr, gridlocale.ForTimes, misakiGothic2ndFace, top)
+
+		nestc := gsys.GetNestC(*codeblock.Pos)
+		if nestc == -1 {
+			break
+		}
 		if nestc < 1 {
 			nestc = 1
 		}
 		for i := 1; i < nestc+1; i++ {
-			fmt.Println(i)
 			op.GeoM.Reset()
 			op.GeoM.Scale(gsys.SizeMult, gsys.SizeMult)
 			op.GeoM.Translate(pos.X, pos.Y+(10*gsys.SizeMult*float64(i)))
@@ -603,6 +797,9 @@ func (gsys *Gridsys) DrawBlock(ebitenScr *ebiten.Image, codeblock *CodeBlock, po
 
 func (gsys *Gridsys) DrawAllBlocks(ebitenScr *ebiten.Image, pos Vec2F) {
 	for v2, some := range gsys.Blocks {
+		if some.Pos.X == 10000 {
+			continue
+		}
 		// v2 to correct v2f
 		v2f := Vec2F{
 			X: 10*gsys.SizeMult*float64(v2.X) + 10*gsys.SizeMult*gsys.tX,
@@ -612,8 +809,41 @@ func (gsys *Gridsys) DrawAllBlocks(ebitenScr *ebiten.Image, pos Vec2F) {
 	}
 }
 
-func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
-	fmt.Println(gsys.tX, gsys.tY)
+func (gsys *Gridsys) DrawPalette(ebitenScr *ebiten.Image, pos Vec2F, width, height float64) {
+	grid := 10 * gsys.SizeMult
+	padding := 5 * gsys.SizeMult                         // パレット内の余白
+	blockHeight := grid * 1.5                            // 各ブロックの高さ
+	maxBlocks := int((height - padding*2) / blockHeight) // 描画可能なブロック数
+
+	for i, _ := range PaletteBlocks {
+		if i >= maxBlocks {
+			break // 描画可能な領域を超えたら終了
+		}
+
+		blockPos := Vec2F{
+			X: pos.X + padding,
+			Y: pos.Y + padding + float64(i)*blockHeight,
+		}
+
+		// パレット内のブロックを描画
+		if block, exists := gsys.Blocks[Vec2{X: 10000, Y: i}]; exists {
+			gsys.DrawBlock(ebitenScr, block, blockPos, 1)
+		}
+	}
+}
+
+const (
+	separate = 7
+	edratio  = 4
+)
+
+func (gsys *Gridsys) spos(s int) {
+	i := s
+	gsys.paletteoffsette = &i
+}
+
+func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size *Vec2) {
+	//fmt.Println(gsys.tX, gsys.tY)
 	// GRID
 	wx, wy := size.X, size.Y
 	baseX, baseY := math.Mod(gsys.tX, 1), math.Mod(gsys.tY, 1)
@@ -667,10 +897,28 @@ func (gsys *Gridsys) Draw(ebitenScr *ebiten.Image, pos Vec2, size Vec2) {
 	gsys.DrawAllBlocks(ebitenScr, Vec2F{10 * gsys.SizeMult * gsys.tX, 10 * gsys.SizeMult * gsys.tY})
 
 	// palette
-	separate := 7
-	edratio := 4
 
 	vector.DrawFilledRect(ebitenScr, float32(wx/separate*edratio), 0, float32(wx/separate*separate-edratio), float32(wy), color.RGBA{150, 150, 150, 255}, false)
+
+	paletteX := float64(size.X) / separate * edratio
+	paletteWidth := float64(size.X) / separate * (separate - edratio)
+	paletteHeight := float64(size.Y)
+
+	// パレットの背景を描画
+	vector.DrawFilledRect(ebitenScr, float32(paletteX), 0, float32(paletteWidth), float32(paletteHeight), color.RGBA{150, 150, 150, 255}, false)
+
+	gsys.spos(int(paletteX))
+	// パレットを描画
+	gsys.DrawPalette(ebitenScr, Vec2F{X: paletteX, Y: 0}, paletteWidth, paletteHeight)
+
+	//gsys.DrawPalette(ebitenScr, &Vec2F{X: separate * gsys.SizeMult, Y: 10 * gsys.SizeMult})
+
+	for s := range gsys.strokes {
+		s.Update(gsys)
+		if !s.codeblock.dragged {
+			delete(gsys.strokes, s)
+		}
+	}
 
 	//cursor
 	if dc {

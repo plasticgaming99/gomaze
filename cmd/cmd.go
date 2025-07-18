@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -28,8 +29,7 @@ type Gaem struct {
 
 var mzmap int
 
-// init maps
-func init() {
+func init2() {
 	MazeMap = append(MazeMap, maze.Maze{
 		SizeX: 7,
 		SizeY: 7,
@@ -68,6 +68,13 @@ func init() {
 	})
 }
 
+// init maps
+func init() {
+	init2()
+}
+
+var toggler = false
+
 func (g *Gaem) Update() error {
 	/*if rd.RepeatingKeyPressed(ebiten.KeyUp) {
 		MazeMap[mzmap].Gopher[0].Up(&MazeMap[mzmap])
@@ -86,8 +93,21 @@ func (g *Gaem) Update() error {
 	} else if rd.RepeatingKeyPressed(ebiten.KeyQ) {
 		MazeMap[mzmap].Gopher[0].Rotate(-1)
 	}
+
+	if rd.RepeatingKeyPressed(ebiten.KeySpace) {
+		edgp.Gridsys.InterpretTick(&MazeMap[mzmap])
+		fmt.Println(gridsys.Interpret)
+		toggler = !toggler
+		if toggler {
+			gridsys.Interpret = true
+		} else {
+			gridsys.Interpret = false
+			init2()
+		}
+	}
+
 	//gridEd.Tick()
-	edgp.Gridsys.Tick()
+	edgp.Gridsys.Tick(&MazeMap[mzmap])
 	return nil
 }
 
@@ -104,6 +124,7 @@ func (g *Gaem) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func Exec() {
+	ebiten.SetTPS(60)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	// maze := gomaze.Maze{}
 	mzmap = 1
