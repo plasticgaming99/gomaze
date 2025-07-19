@@ -12,10 +12,12 @@ import (
 )
 
 var (
-	MazeMap []maze.Maze
-	gridEd  = gridsys.New()
-	comp    = composite.NewCompositor()
-	edgp    = composite.NewEditor()
+	MazeMap   []maze.Maze
+	DefGopher []gridsys.Vec2
+	DefAxis   []int
+	gridEd    = gridsys.New()
+	comp      = composite.NewCompositor()
+	edgp      = composite.NewEditor()
 )
 
 func init() {
@@ -24,7 +26,8 @@ func init() {
 }
 
 type Gaem struct {
-	Maze maze.Maze
+	Maze  maze.Maze
+	count int
 }
 
 var mzmap int
@@ -37,15 +40,17 @@ func init2() {
 			{0, 0, 0, 0, 0, 0, 0},
 			{0, 0, 0, 0, 0, 0, 0},
 			{0, 0, 0, 0, 0, 0, 0},
-			{0, 1, 1, 1, 1, 1, 1},
+			{0, 2, 0, 0, 0, 0, 0},
 			{0, 1, 0, 0, 0, 0, 0},
 			{0, 1, 0, 0, 0, 0, 0},
 			{0, 1, 0, 0, 0, 0, 0},
 		},
 		Gopher: []maze.Gopher{
-			{X: 1, Y: 6},
+			{X: 1, Y: 6, Angle: 3},
 		},
 	})
+	DefGopher = append(DefGopher, gridsys.Vec2{X: 1, Y: 6})
+	DefAxis = append(DefAxis, 3)
 
 	MazeMap = append(MazeMap, maze.Maze{
 		SizeX: 10,
@@ -60,12 +65,14 @@ func init2() {
 			{0, 0, 0, 0, 0, 1, 1, 0, 0, 0},
 			{0, 0, 0, 0, 0, 0, 1, 1, 0, 0},
 			{0, 0, 0, 0, 0, 0, 0, 1, 1, 0},
-			{0, 0, 0, 0, 0, 0, 0, 0, 1, 1},
+			{0, 0, 0, 0, 0, 0, 0, 0, 1, 2},
 		},
 		Gopher: []maze.Gopher{
 			{X: 0, Y: 1},
 		},
 	})
+	DefGopher = append(DefGopher, gridsys.Vec2{X: 0, Y: 1})
+	DefAxis = append(DefAxis, 0)
 }
 
 // init maps
@@ -94,7 +101,16 @@ func (g *Gaem) Update() error {
 		MazeMap[mzmap].Gopher[0].Rotate(-1)
 	}
 
+	if rd.RepeatingKeyPressed(ebiten.KeyR) {
+		MazeMap[mzmap].Gopher[0].X = DefGopher[mzmap].X
+		MazeMap[mzmap].Gopher[0].Y = DefGopher[mzmap].Y
+		MazeMap[mzmap].Gopher[0].Angle = DefAxis[mzmap]
+
+		gridsys.PointerX, gridsys.PointerY = 1, 1
+	}
+
 	if rd.RepeatingKeyPressed(ebiten.KeySpace) {
+		fmt.Println("w")
 		edgp.Gridsys.InterpretTick(&MazeMap[mzmap])
 		fmt.Println(gridsys.Interpret)
 		toggler = !toggler
@@ -102,8 +118,15 @@ func (g *Gaem) Update() error {
 			gridsys.Interpret = true
 		} else {
 			gridsys.Interpret = false
-			init2()
+			//MazeMap[mzmap].Gopher[0]
 		}
+	}
+
+	if rd.RepeatingKeyPressed(ebiten.KeyEnter) {
+		mzmap++
+		MazeMap[mzmap].Gopher[0].X = DefGopher[mzmap].X
+		MazeMap[mzmap].Gopher[0].Y = DefGopher[mzmap].Y
+		MazeMap[mzmap].Gopher[0].Angle = DefAxis[mzmap]
 	}
 
 	//gridEd.Tick()
@@ -127,7 +150,7 @@ func Exec() {
 	ebiten.SetTPS(60)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	// maze := gomaze.Maze{}
-	mzmap = 1
+	mzmap = 0
 	gaem := Gaem{}
 	ebiten.RunGame(&gaem)
 }

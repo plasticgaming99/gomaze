@@ -11,6 +11,7 @@ import (
 const (
 	MazeBlock = iota
 	MazeFree
+	MazeGoal
 )
 
 var (
@@ -23,11 +24,13 @@ const (
 )
 
 func init() {
-	MazeImg = make([]*ebiten.Image, 2, 2)
+	MazeImg = make([]*ebiten.Image, 3, 3)
 	MazeImg[MazeFree] = ebiten.NewImage(MazeTileSize, MazeTileSize)
 	MazeImg[MazeFree].Fill(color.White)
 	MazeImg[MazeBlock] = ebiten.NewImage(MazeTileSize, MazeTileSize)
 	MazeImg[MazeBlock].Fill(color.RGBA{100, 100, 100, 255})
+	MazeImg[MazeGoal] = ebiten.NewImage(MazeTileSize, MazeTileSize)
+	MazeImg[MazeGoal].Fill(color.RGBA{0, 255, 0, 255})
 
 	GiG := ebiten.NewImage(MazeTileSize/4, MazeTileSize)
 	GiG.Fill(color.RGBA{0, 170, 170, 255})
@@ -69,7 +72,7 @@ func (goph *Gopher) Up(mz *Maze) {
 	if len(mz.Map[goph.Y]) <= goph.X || len(mz.Map[goph.Y]) == 0 {
 		return
 	}
-	if mz.Map[goph.Y-1][goph.X] != MazeFree {
+	if mz.Map[goph.Y-1][goph.X] == MazeBlock {
 		return
 	}
 	goph.Y--
@@ -85,7 +88,7 @@ func (goph *Gopher) Down(mz *Maze) {
 	if len(mz.Map[goph.Y]) <= goph.X || len(mz.Map[goph.Y]) == 0 {
 		return
 	}
-	if mz.Map[goph.Y+1][goph.X] != MazeFree {
+	if mz.Map[goph.Y+1][goph.X] == MazeBlock {
 		return
 	}
 	goph.Y++
@@ -101,7 +104,7 @@ func (goph *Gopher) Left(mz *Maze) {
 	if len(mz.Map[goph.Y]) <= goph.X || len(mz.Map[goph.Y]) == 0 {
 		return
 	}
-	if mz.Map[goph.Y][goph.X-1] != MazeFree {
+	if mz.Map[goph.Y][goph.X-1] == MazeBlock {
 		return
 	}
 	goph.X--
@@ -114,7 +117,7 @@ func (goph *Gopher) Right(mz *Maze) {
 	if len(mz.Map[goph.Y]) <= goph.X+1 || len(mz.Map[goph.Y]) < 0 {
 		return
 	}
-	if mz.Map[goph.Y][goph.X+1] != MazeFree {
+	if mz.Map[goph.Y][goph.X+1] == MazeBlock {
 		return
 	}
 	goph.X++
